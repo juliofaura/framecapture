@@ -75,6 +75,7 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
+	defer cam.Close()
 
 	var format webcam.PixelFormat
 	var format_chosen string
@@ -136,49 +137,48 @@ func main() {
 
 	timeout := uint32(5) //5 seconds
 	frameNr := 0
-	initial_time := time.Now()
+
+	cam, err = webcam.Open(videoCam)
+	if err != nil {
+		panic(err.Error())
+	}
+	fmt.Println("Cam is opened now")
+	time.Sleep(time.Second)
+	_, _, _, err = cam.SetImageFormat(format, uint32(size.MaxWidth), uint32(size.MaxHeight))
+	fmt.Println("Format set")
+	time.Sleep(time.Second)
+	err = cam.StartStreaming()
+	if err != nil {
+		panic(err.Error())
+	}
+	fmt.Println("Streaming started")
+	time.Sleep(time.Second)
+	now := time.Now()
+	nextStop := now.Add(timelag)
 
 	for {
-		cam, err := webcam.Open(videoCam)
-		if err != nil {
-			panic(err.Error())
-		}
-		_, _, _, err = cam.SetImageFormat(format, uint32(size.MaxWidth), uint32(size.MaxHeight))
-		err = cam.StartStreaming()
-		if err != nil {
-			panic(err.Error())
-		}
-		fmt.Println("Streaming started, waiting to stabilize ...")
-		time.Sleep(time.Second)
 		err = cam.WaitForFrame(timeout)
 
 		switch err.(type) {
 		case nil:
 		case *webcam.Timeout:
+			fmt.Println("Timeout!")
 			fmt.Fprint(os.Stderr, err.Error())
 			continue
 		default:
 			panic(err.Error())
 		}
 		fmt.Println("Waited for frame, all good, now to read frame ...")
-
 		frame, err := cam.ReadFrame()
 		if err != nil || len(frame) == 0 {
 			log.Panic("Error reading frame after WaitForFrame")
 		}
 		fmt.Println("Frame read")
-		for {
-			lastframe := frame
-			frame, err = cam.ReadFrame()
-			if err != nil || len(frame) == 0 {
-				fmt.Println("Read new frame, len is", len(frame), "and err is", err)
-				frame = lastframe
-				break
-			}
+		now = time.Now()
+		if now.Before(nextStop) {
+			continue
 		}
-		//fmt.Printf("Received frame, format is %v, width is %v, heigth is %v\n", format_chosen, size.MaxWidth, size.MaxHeight)
-		log.Println("Photo taken, frameNr is", frameNr)
-		now := time.Now()
+		nextStop = nextStop.Add(timelag)
 		file, err := os.Create(fmt.Sprintf("Frame-%08d--%04d-%02d-%02d-%02d-%02d-%02d-%02d.jpg",
 			frameNr, now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second(), now.Nanosecond()))
 		if err != nil {
@@ -198,22 +198,7 @@ func main() {
 			fmt.Printf("Offsets of 0,0 are %v (Y) and %v (C), and strides are %v (Y) and %v (C)\n",
 				YUVimage.YOffset(0, 0), YUVimage.YStride, YUVimage.COffset(0, 0), YUVimage.CStride)
 			jpeg.Encode(file, YUVimage, &jpeg.Options{Quality: 100})
-		} else {
-			_, err = file.Write(frame)
-			if err != nil {
-				panic(err.Error())
-			}
-		}
-		err = file.Close()
-		if err != nil {
-			panic(err.Error())
-		}
-
-		cam.Close()
-		fmt.Println("Camera closed\n")
-		frameNr++
-		for time.Since(initial_time) < timelag*time.Duration(frameNr) {
-			time.Sleep(100 * time.Millisecond)
 		}
 	}
+
 }
