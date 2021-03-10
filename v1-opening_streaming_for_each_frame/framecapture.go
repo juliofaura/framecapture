@@ -144,6 +144,15 @@ func main() {
 			panic(err.Error())
 		}
 		_, _, _, err = cam.SetImageFormat(format, uint32(size.MaxWidth), uint32(size.MaxHeight))
+		if err != nil {
+			panic(err.Error())
+		}
+		fmt.Println("Image format set, now setting auto white balance ...")
+		err = cam.SetAutoWhiteBalance(false)
+		if err != nil {
+			panic(err.Error())
+		}
+		fmt.Println("Auto white balance set, now starting streaming ...")
 		err = cam.StartStreaming()
 		if err != nil {
 			panic(err.Error())
